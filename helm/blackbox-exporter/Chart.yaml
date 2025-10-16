@@ -1,0 +1,17 @@
+apiVersion: v2
+name: blackbox-exporter
+description: A Helm chart for Prometheus Blackbox Exporter
+type: application
+version: 0.1.0
+appVersion: "0.24.0"
+maintainers:
+  - name: blackbox-exporter-maintainer
+keywords:
+  - monitoring
+  - blackbox
+  - exporter
+  - prometheus
+  - probing
+home: https://prometheus.io/docs/guides/multi-target-exporter/
+sources:
+  - https://github.com/prometheus/blackbox_exporter

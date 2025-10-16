@@ -90,6 +90,40 @@ prometheus:
       - job_name: 'alertmanager'
         static_configs:
           - targets: ['alertmanager.prometheus.svc.cluster.local:9093']
+      - job_name: 'blackbox-exporter'
+        static_configs:
+          - targets: ['blackbox-exporter.prometheus.svc.cluster.local:9115']
+      - job_name: 'blackbox-http'
+        metrics_path: /probe
+        params:
+          module: [http_2xx]
+        static_configs:
+          - targets:
+            - https://prometheus.amazone.lan
+            - https://alertmanager.amazone.lan
+            - https://www.google.com
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: blackbox-exporter.prometheus.svc.cluster.local:9115
+      - job_name: 'blackbox-icmp'
+        metrics_path: /probe
+        params:
+          module: [icmp]
+        static_configs:
+          - targets:
+            - 8.8.8.8
+            - 1.1.1.1
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: blackbox-exporter.prometheus.svc.cluster.local:9115
       - job_name: 'kubernetes-nodes'
         kubernetes_sd_configs:
           - role: node
@@ -132,6 +166,53 @@ alerting:
             annotations:
               summary: "Prometheus too many restarts (instance {{ $labels.instance }})"
               description: "Prometheus has restarted more than twice in the last 15 minutes. It might be crashlooping.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+
+      - name: blackbox.rules
+        rules:
+          - alert: BlackboxProbeFailed
+            expr: probe_success == 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Blackbox probe failed (instance {{ $labels.instance }})"
+              description: "Probe failed\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+
+          - alert: BlackboxSlowProbe
+            expr: avg_over_time(probe_duration_seconds[1m]) > 1
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Blackbox slow probe (instance {{ $labels.instance }})"
+              description: "Blackbox probe took more than 1s to complete\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+
+          - alert: BlackboxProbeHttpFailure
+            expr: probe_http_status_code <= 199 OR probe_http_status_code >= 400
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Blackbox probe HTTP failure (instance {{ $labels.instance }})"
+              description: "HTTP status code is not 200-399\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+
+          - alert: BlackboxSslCertificateWillExpireSoon
+            expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 30
+            for: 0m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Blackbox SSL certificate will expire soon (instance {{ $labels.instance }})"
+              description: "SSL certificate expires in 30 days\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+
+          - alert: BlackboxSslCertificateWillExpireSoon
+            expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 3
+            for: 0m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Blackbox SSL certificate will expire soon (instance {{ $labels.instance }})"
+              description: "SSL certificate expires in 3 days\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
 # Replica count
 replicaCount: 1

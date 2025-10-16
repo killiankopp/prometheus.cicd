@@ -1,16 +1,18 @@
-# Prometheus + AlertManager GitOps Deployment
+# Prometheus + AlertManager + Blackbox Exporter GitOps Deployment
 
-Déploiement production-like de Prometheus et AlertManager sur cluster k3d avec GitOps (ArgoCD).
+Déploiement production-like de la stack Prometheus complète sur cluster k3d avec GitOps (ArgoCD).
 
 ## Architecture
 
 - **Namespace**: `prometheus`
-- **Domains**: 
+- **Domains**:
   - `prometheus.amazone.lan` (Prometheus HTTPS)
   - `alertmanager.amazone.lan` (AlertManager HTTPS)
+  - `blackbox.amazone.lan` (Blackbox Exporter HTTPS - optionnel)
 - **Storage**: PVC 10Gi (Prometheus) + 2Gi (AlertManager)
 - **Ingress**: NGINX avec TLS automatique
 - **GitOps**: ArgoCD pour déploiement zero-downtime
+- **Monitoring**: HTTP/HTTPS, TCP, ICMP, DNS probes via Blackbox Exporter
 
 ## Structure
 
@@ -19,7 +21,8 @@ prometheus.cicd/
 ├── README.md
 ├── argocd/
 │   ├── app.yaml                     # Application ArgoCD Prometheus
-│   └── alertmanager-app.yaml        # Application ArgoCD AlertManager
+│   ├── alertmanager-app.yaml        # Application ArgoCD AlertManager
+│   └── blackbox-exporter-app.yaml  # Application ArgoCD Blackbox Exporter
 └── helm/
     ├── prometheus/
     │   ├── Chart.yaml               # Métadonnées du chart
@@ -46,6 +49,16 @@ prometheus.cicd/
             ├── secret.yaml         # Secrets auto-générés
             ├── service.yaml        # Service interne
             └── serviceaccount.yaml
+    └── blackbox-exporter/
+        ├── Chart.yaml               # Métadonnées Blackbox Exporter
+        ├── values.yaml              # Configuration Blackbox Exporter
+        └── templates/
+            ├── _helpers.tpl         # Fonctions utilitaires
+            ├── configmap.yaml       # Configuration modules de probe
+            ├── deployment.yaml      # Déploiement Blackbox Exporter
+            ├── ingress.yaml         # Exposition HTTPS (optionnel)
+            ├── service.yaml         # Service interne
+            └── serviceaccount.yaml
 ```
 
 ## Prérequis
@@ -66,6 +79,9 @@ kubectl apply -f argocd/app.yaml
 
 # Déployer AlertManager
 kubectl apply -f argocd/alertmanager-app.yaml
+
+# Déployer Blackbox Exporter
+kubectl apply -f argocd/blackbox-exporter-app.yaml
 ```
 
 ### 2. Vérifier le déploiement
@@ -88,8 +104,10 @@ kubectl get certificate -n prometheus
 
 - **Prometheus**: `https://prometheus.amazone.lan`
 - **AlertManager**: `https://alertmanager.amazone.lan`
+- **Blackbox Exporter**: `https://blackbox.amazone.lan` (si ingress activé)
 - **Port-forward Prometheus**: `kubectl port-forward -n prometheus svc/prometheus 9090:9090`
 - **Port-forward AlertManager**: `kubectl port-forward -n prometheus svc/alertmanager 9093:9093`
+- **Port-forward Blackbox**: `kubectl port-forward -n prometheus svc/blackbox-exporter 9115:9115`
 
 ## Configuration
 
@@ -211,6 +229,7 @@ kubectl describe ingress prometheus -n prometheus
 - **Configuration Prometheus**: <https://prometheus.amazone.lan/config>
 - **Targets Prometheus**: <https://prometheus.amazone.lan/targets>
 - **Alerts**: <https://prometheus.amazone.lan/alerts>
+- **Blackbox Probes**: <http://localhost:9115/probe?module=http_2xx&target=https://example.com> (via port-forward)
 
 ## Alerting
 
@@ -245,27 +264,75 @@ alertmanager:
             subject: 'Alerte {{ .GroupLabels.alertname }}'
 ```
 
+## Blackbox Exporter
+
+### Modules de probe configurés
+
+- **http_2xx**: Tests HTTP/HTTPS avec codes de statut 200-399
+- **http_post_2xx**: Tests HTTP POST avec JSON body
+- **tcp_connect**: Tests de connexion TCP
+- **icmp**: Tests de ping ICMP
+- **dns_udp**: Tests de résolution DNS
+- **ssh_banner**: Tests de bannière SSH
+
+### Targets surveillées par défaut
+
+- **HTTP/HTTPS**: Services Prometheus et AlertManager
+- **ICMP**: Serveurs DNS publics (8.8.8.8, 1.1.1.1)
+- **Personnalisables** via `values.yaml`
+
+### Personnaliser les targets
+
+Modifier `helm/blackbox-exporter/values.yaml` :
+
+```yaml
+monitoring:
+  targets:
+    http:
+      - name: "mon-site"
+        url: "https://mon-site.com"
+        module: "http_2xx"
+    icmp:
+      - name: "mon-serveur"
+        target: "192.168.1.100"
+        module: "icmp"
+```
+
+### Règles d'alerte Blackbox
+
+- **BlackboxProbeFailed**: Échec de probe pendant 5min
+- **BlackboxSlowProbe**: Probe trop lente (>1s)
+- **BlackboxProbeHttpFailure**: Code HTTP d'erreur
+- **BlackboxSslCertificateWillExpireSoon**: Certificat SSL expirant
+
 ## Commandes utiles
 
 ```bash
 # Test des charts Helm localement
 helm template prometheus ./helm/prometheus
 helm template alertmanager ./helm/alertmanager
+helm template blackbox-exporter ./helm/blackbox-exporter
 
 # Validation des charts
 helm lint ./helm/prometheus
 helm lint ./helm/alertmanager
+helm lint ./helm/blackbox-exporter
 
 # Installation manuelle (bypass ArgoCD)
 helm install prometheus ./helm/prometheus -n prometheus --create-namespace
 helm install alertmanager ./helm/alertmanager -n prometheus
+helm install blackbox-exporter ./helm/blackbox-exporter -n prometheus
 
 # Désinstallation complète
-kubectl delete application prometheus alertmanager -n argocd
+kubectl delete application prometheus alertmanager blackbox-exporter -n argocd
 kubectl delete namespace prometheus
 
 # Test des alertes
 curl -X POST https://alertmanager.amazone.lan/api/v1/alerts \
   -H "Content-Type: application/json" \
   -d '[{"labels":{"alertname":"TestAlert","severity":"warning"}}]'
+
+# Test manuel d'une probe Blackbox
+kubectl port-forward -n prometheus svc/blackbox-exporter 9115:9115 &
+curl "http://localhost:9115/probe?module=http_2xx&target=https://example.com"
 ```
