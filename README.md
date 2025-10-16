@@ -1,34 +1,50 @@
-# Prometheus GitOps Deployment
+# Prometheus + AlertManager GitOps Deployment
 
-Déploiement production-like de Prometheus sur cluster k3d avec GitOps (ArgoCD).
+Déploiement production-like de Prometheus et AlertManager sur cluster k3d avec GitOps (ArgoCD).
 
 ## Architecture
 
 - **Namespace**: `prometheus`
-- **Domain**: `prometheus.amazone.lan` (HTTPS via cert-manager)
-- **Storage**: PVC 10Gi (StorageClass par défaut)
+- **Domains**: 
+  - `prometheus.amazone.lan` (Prometheus HTTPS)
+  - `alertmanager.amazone.lan` (AlertManager HTTPS)
+- **Storage**: PVC 10Gi (Prometheus) + 2Gi (AlertManager)
 - **Ingress**: NGINX avec TLS automatique
 - **GitOps**: ArgoCD pour déploiement zero-downtime
 
 ## Structure
 
-```
+```text
 prometheus.cicd/
 ├── README.md
 ├── argocd/
-│   └── app.yaml                 # Application ArgoCD
+│   ├── app.yaml                     # Application ArgoCD Prometheus
+│   └── alertmanager-app.yaml        # Application ArgoCD AlertManager
 └── helm/
-    └── prometheus/
-        ├── Chart.yaml           # Métadonnées du chart
-        ├── values.yaml          # Configuration par défaut
+    ├── prometheus/
+    │   ├── Chart.yaml               # Métadonnées du chart
+    │   ├── values.yaml              # Configuration Prometheus
+    │   └── templates/
+    │       ├── _helpers.tpl         # Fonctions utilitaires
+    │       ├── configmap.yaml       # Configuration Prometheus
+    │       ├── deployment.yaml      # Déploiement Prometheus
+    │       ├── ingress.yaml         # Exposition HTTPS
+    │       ├── pvc.yaml            # Stockage persistant
+    │       ├── rules.yaml          # Règles d'alerte
+    │       ├── secret.yaml         # Secrets auto-générés
+    │       ├── service.yaml        # Service interne
+    │       └── serviceaccount.yaml
+    └── alertmanager/
+        ├── Chart.yaml               # Métadonnées AlertManager
+        ├── values.yaml              # Configuration AlertManager
         └── templates/
-            ├── _helpers.tpl     # Fonctions utilitaires
-            ├── configmap.yaml   # Configuration Prometheus
-            ├── deployment.yaml  # Déploiement principal
-            ├── ingress.yaml     # Exposition HTTPS
-            ├── pvc.yaml         # Stockage persistant
-            ├── secret.yaml      # Secrets auto-générés
-            ├── service.yaml     # Service interne
+            ├── _helpers.tpl         # Fonctions utilitaires
+            ├── configmap.yaml       # Configuration AlertManager
+            ├── deployment.yaml      # Déploiement AlertManager
+            ├── ingress.yaml         # Exposition HTTPS
+            ├── pvc.yaml            # Stockage persistant
+            ├── secret.yaml         # Secrets auto-générés
+            ├── service.yaml        # Service interne
             └── serviceaccount.yaml
 ```
 
@@ -42,32 +58,38 @@ prometheus.cicd/
 
 ## Déploiement
 
-### 1. Créer l'application ArgoCD
+### 1. Créer les applications ArgoCD
 
 ```bash
+# Déployer Prometheus
 kubectl apply -f argocd/app.yaml
+
+# Déployer AlertManager
+kubectl apply -f argocd/alertmanager-app.yaml
 ```
 
 ### 2. Vérifier le déploiement
 
 ```bash
-# Statut de l'application ArgoCD
-kubectl get application prometheus -n argocd
+# Statut des applications ArgoCD
+kubectl get application -n argocd
 
 # Statut des pods
 kubectl get pods -n prometheus
 
-# Statut du PVC
+# Statut des PVC
 kubectl get pvc -n prometheus
 
-# Certificat TLS
+# Certificats TLS
 kubectl get certificate -n prometheus
 ```
 
-### 3. Accès au service
+### 3. Accès aux services
 
-- **Local**: `https://prometheus.amazone.lan`
-- **Port-forward**: `kubectl port-forward -n prometheus svc/prometheus 9090:9090`
+- **Prometheus**: `https://prometheus.amazone.lan`
+- **AlertManager**: `https://alertmanager.amazone.lan`
+- **Port-forward Prometheus**: `kubectl port-forward -n prometheus svc/prometheus 9090:9090`
+- **Port-forward AlertManager**: `kubectl port-forward -n prometheus svc/alertmanager 9093:9093`
 
 ## Configuration
 
@@ -183,24 +205,67 @@ kubectl describe ingress prometheus -n prometheus
 
 ## URLs utiles
 
-- **Interface Prometheus**: https://prometheus.amazone.lan
-- **Métriques**: https://prometheus.amazone.lan/metrics
-- **Configuration**: https://prometheus.amazone.lan/config
-- **Targets**: https://prometheus.amazone.lan/targets
+- **Interface Prometheus**: <https://prometheus.amazone.lan>
+- **Interface AlertManager**: <https://alertmanager.amazone.lan>
+- **Métriques Prometheus**: <https://prometheus.amazone.lan/metrics>
+- **Configuration Prometheus**: <https://prometheus.amazone.lan/config>
+- **Targets Prometheus**: <https://prometheus.amazone.lan/targets>
+- **Alerts**: <https://prometheus.amazone.lan/alerts>
+
+## Alerting
+
+### Règles d'alerte incluses
+
+- **PrometheusTargetMissing**: Détecte les targets indisponibles
+- **PrometheusConfigurationReloadFailure**: Échec de rechargement de config
+- **PrometheusTooManyRestarts**: Trop de redémarrages
+
+### Configuration AlertManager
+
+Par défaut, AlertManager est configuré avec :
+
+- **Webhook générique** pour les tests
+- **Grouping** par nom d'alerte
+- **Inhibition** des alertes warning en cas de critical
+
+### Personnaliser les notifications
+
+Modifier `helm/alertmanager/values.yaml` :
+
+```yaml
+alertmanager:
+  config:
+    global:
+      smtp_smarthost: 'smtp.example.com:587'
+      smtp_from: 'alerts@example.com'
+    receivers:
+      - name: 'email-notifications'
+        email_configs:
+          - to: 'admin@example.com'
+            subject: 'Alerte {{ .GroupLabels.alertname }}'
+```
 
 ## Commandes utiles
 
 ```bash
-# Test du chart Helm localement
+# Test des charts Helm localement
 helm template prometheus ./helm/prometheus
+helm template alertmanager ./helm/alertmanager
 
-# Validation du chart
+# Validation des charts
 helm lint ./helm/prometheus
+helm lint ./helm/alertmanager
 
 # Installation manuelle (bypass ArgoCD)
 helm install prometheus ./helm/prometheus -n prometheus --create-namespace
+helm install alertmanager ./helm/alertmanager -n prometheus
 
 # Désinstallation complète
-kubectl delete application prometheus -n argocd
+kubectl delete application prometheus alertmanager -n argocd
 kubectl delete namespace prometheus
+
+# Test des alertes
+curl -X POST https://alertmanager.amazone.lan/api/v1/alerts \
+  -H "Content-Type: application/json" \
+  -d '[{"labels":{"alertname":"TestAlert","severity":"warning"}}]'
 ```
