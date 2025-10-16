@@ -1,0 +1,122 @@
+# Global configuration
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# AlertManager configuration
+image:
+  registry: docker.io
+  repository: prom/alertmanager
+  tag: "v0.26.0"
+  pullPolicy: IfNotPresent
+
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Security context
+securityContext:
+  runAsUser: 65534
+  runAsGroup: 65534
+  runAsNonRoot: true
+  fsGroup: 65534
+
+# Container security context
+containerSecurityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65534
+
+# Resources
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Persistence
+persistence:
+  enabled: true
+  size: 2Gi
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 9093
+  targetPort: 9093
+  annotations: {}
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: local-amazone
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  hostname: alertmanager.amazone.lan
+  tls:
+    enabled: true
+    secretName: alertmanager-tls
+
+# AlertManager configuration
+alertmanager:
+  configMapName: alertmanager-config
+  config:
+    global:
+      smtp_smarthost: 'localhost:587'
+      smtp_from: 'alertmanager@amazone.lan'
+    route:
+      group_by: ['alertname']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'web.hook'
+    receivers:
+      - name: 'web.hook'
+        webhook_configs:
+          - url: 'http://127.0.0.1:5001/'
+    inhibit_rules:
+      - source_match:
+          severity: 'critical'
+        target_match:
+          severity: 'warning'
+        equal: ['alertname', 'dev', 'instance']
+
+# Replica count
+replicaCount: 1
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# Probes
+probes:
+  liveness:
+    enabled: true
+    initialDelaySeconds: 30
+    timeoutSeconds: 10
+  readiness:
+    enabled: true
+    initialDelaySeconds: 5
+    timeoutSeconds: 5

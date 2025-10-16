@@ -1,0 +1,12 @@
+{{- if .Values.alerting.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "prometheus.fullname" . }}-rules
+  namespace: {{ .Values.global.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "prometheus.labels" . | nindent 4 }}
+data:
+  prometheus.rules.yml: |
+    {{- toYaml .Values.alerting.rules | nindent 4 }}
+{{- end }}

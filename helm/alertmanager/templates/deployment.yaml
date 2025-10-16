@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "prometheus.fullname" . }}
+  name: {{ include "alertmanager.fullname" . }}
   namespace: {{ .Values.global.namespace | default .Release.Namespace }}
   labels:
-    {{- include "prometheus.labels" . | nindent 4 }}
+    {{- include "alertmanager.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "prometheus.selectorLabels" . | nindent 6 }}
+      {{- include "alertmanager.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "prometheus.selectorLabels" . | nindent 8 }}
+        {{- include "alertmanager.selectorLabels" . | nindent 8 }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
@@ -21,26 +21,27 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "prometheus.serviceAccountName" . }}
+      serviceAccountName: {{ include "alertmanager.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.securityContext | nindent 8 }}
       containers:
-        - name: prometheus
+        - name: alertmanager
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
-          image: {{ include "prometheus.image" . }}
+          image: {{ include "alertmanager.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
-            - '--config.file=/etc/prometheus/prometheus.yml'
-            - '--storage.tsdb.path=/prometheus/'
-            - '--web.console.libraries=/etc/prometheus/console_libraries'
-            - '--web.console.templates=/etc/prometheus/consoles'
-            - '--storage.tsdb.retention.time=15d'
-            - '--web.enable-lifecycle'
-            - '--web.enable-admin-api'
+            - '--config.file=/etc/alertmanager/alertmanager.yml'
+            - '--storage.path=/alertmanager'
+            - '--web.external-url=https://{{ .Values.ingress.hostname }}'
+            - '--web.route-prefix=/'
+            - '--cluster.listen-address=0.0.0.0:9094'
           ports:
             - name: http
               containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+            - name: cluster
+              containerPort: 9094
               protocol: TCP
           {{- if .Values.probes.liveness.enabled }}
           livenessProbe:
@@ -61,34 +62,25 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
-            - name: prometheus-config
-              mountPath: /etc/prometheus
-            - name: prometheus-data
-              mountPath: /prometheus
+            - name: alertmanager-config
+              mountPath: /etc/alertmanager
+            - name: alertmanager-data
+              mountPath: /alertmanager
             - name: tmp
               mountPath: /tmp
-            {{- if .Values.alerting.enabled }}
-            - name: prometheus-rules
-              mountPath: /etc/prometheus/rules
-            {{- end }}
       volumes:
-        - name: prometheus-config
+        - name: alertmanager-config
           configMap:
-            name: {{ .Values.prometheus.configMapName }}
-        - name: prometheus-data
+            name: {{ .Values.alertmanager.configMapName }}
+        - name: alertmanager-data
           {{- if .Values.persistence.enabled }}
           persistentVolumeClaim:
-            claimName: {{ include "prometheus.fullname" . }}-data
+            claimName: {{ include "alertmanager.fullname" . }}-data
           {{- else }}
           emptyDir: {}
           {{- end }}
         - name: tmp
           emptyDir: {}
-        {{- if .Values.alerting.enabled }}
-        - name: prometheus-rules
-          configMap:
-            name: {{ include "prometheus.fullname" . }}-rules
-        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

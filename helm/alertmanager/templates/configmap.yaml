@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.alertmanager.configMapName }}
+  namespace: {{ .Values.global.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "alertmanager.labels" . | nindent 4 }}
+data:
+  alertmanager.yml: |
+    {{- toYaml .Values.alertmanager.config | nindent 4 }}

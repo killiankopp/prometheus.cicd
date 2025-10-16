@@ -1,0 +1,16 @@
+apiVersion: v2
+name: alertmanager
+description: A Helm chart for Prometheus AlertManager
+type: application
+version: 0.1.0
+appVersion: "0.26.0"
+maintainers:
+  - name: alertmanager-maintainer
+keywords:
+  - monitoring
+  - alertmanager
+  - alerts
+  - prometheus
+home: https://prometheus.io/docs/alerting/latest/alertmanager/
+sources:
+  - https://github.com/prometheus/alertmanager
