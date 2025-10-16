@@ -50,9 +50,9 @@ service:
   targetPort: 9115
   annotations: {}
 
-# Ingress configuration (optionnel pour Blackbox Exporter)
+# Ingress configuration
 ingress:
-  enabled: false
+  enabled: true
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: local-amazone
