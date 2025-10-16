@@ -1,0 +1,15 @@
+apiVersion: v2
+name: prometheus
+description: A Helm chart for Prometheus monitoring system
+type: application
+version: 0.1.0
+appVersion: "2.47.0"
+maintainers:
+  - name: prometheus-maintainer
+keywords:
+  - monitoring
+  - prometheus
+  - metrics
+home: https://prometheus.io/
+sources:
+  - https://github.com/prometheus/prometheus

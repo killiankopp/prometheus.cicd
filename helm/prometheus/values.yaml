@@ -1,0 +1,119 @@
+# Global configuration
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# Prometheus configuration
+image:
+  registry: docker.io
+  repository: prom/prometheus
+  tag: "v2.47.0"
+  pullPolicy: IfNotPresent
+
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Security context
+securityContext:
+  runAsUser: 65534
+  runAsGroup: 65534
+  runAsNonRoot: true
+  fsGroup: 65534
+
+# Container security context
+containerSecurityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65534
+
+# Resources
+resources:
+  limits:
+    cpu: 500m
+    memory: 2Gi
+  requests:
+    cpu: 250m
+    memory: 1Gi
+
+# Persistence
+persistence:
+  enabled: true
+  size: 10Gi
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 9090
+  targetPort: 9090
+  annotations: {}
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: local-amazone
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  hostname: prometheus.amazone.lan
+  tls:
+    enabled: true
+    secretName: prometheus-tls
+
+# Prometheus configuration
+prometheus:
+  configMapName: prometheus-config
+  config:
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    rule_files: []
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+      - job_name: 'kubernetes-nodes'
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - source_labels: [__address__]
+            regex: '(.*):10250'
+            target_label: __address__
+            replacement: '${1}:9100'
+
+# Replica count
+replicaCount: 1
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# Probes
+probes:
+  liveness:
+    enabled: true
+    initialDelaySeconds: 30
+    timeoutSeconds: 10
+  readiness:
+    enabled: true
+    initialDelaySeconds: 5
+    timeoutSeconds: 5
